@@ -34,7 +34,6 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: (origin, cb) => {
-    // Allow requests with no origin or matching allowedOrigins
     if (!origin || allowedOrigins.includes(origin) || origin.startsWith('http://localhost:')) {
       return cb(null, true)
     }
@@ -50,38 +49,48 @@ console.log('[ENV] JWT_SECRET:', process.env.JWT_SECRET ? 'SET ✓' : 'MISSING �
 console.log('[ENV] MONGO_URI:', process.env.MONGO_URI || '(using default)')
 console.log('[ENV] CLOUDINARY_URL:', process.env.CLOUDINARY_URL ? 'SET ✓' : 'MISSING ✗')
 
-let dbUri = process.env.MONGO_URI;
+let dbUri = process.env.MONGO_URI
 
-if (!dbUri) {
+if (dbUri) {
+  try {
+    await mongoose.connect(dbUri, { serverSelectionTimeoutMS: 5000 })
+    console.log('MongoDB connected to ATLAS')
+  } catch (atlasErr) {
+    console.error('Atlas connection failed:', atlasErr.message)
+    console.log('Falling back to in-memory database...')
+    const mongod = await MongoMemoryServer.create()
+    dbUri = mongod.getUri()
+    await mongoose.connect(dbUri)
+    console.log('In-memory MongoDB connected')
+  }
+} else {
   console.log('No MONGO_URI provided, starting in-memory database...')
-  const mongod = await MongoMemoryServer.create();
-  dbUri = mongod.getUri();
+  const mongod = await MongoMemoryServer.create()
+  dbUri = mongod.getUri()
+  await mongoose.connect(dbUri)
 }
 
-mongoose.connect(dbUri)
-  .then(async () => {
-    console.log(`MongoDB connected successfully to ${dbUri.includes('memory') ? 'IN-MEMORY' : 'ATLAS'} DATABASE`)
-    const count = await Product.countDocuments();
-    if (count === 0) {
-      const sampleProducts = [
-        { name: 'Reynolds Blue Ballpoint Pen (Pack of 10)', description: 'Smooth writing.', price: 55, category: 'Pens', stock: 200, sku: 'PEN-001', image: '' },
-        { name: 'Cello Gel Pen Set (20 Colors)', description: 'Pack of 20 colorful gel pens.', price: 180, category: 'Pens', stock: 80, sku: 'PEN-002', image: '' },
-        { name: 'Parker Vector Fountain Pen', description: 'Classic Parker Vector.', price: 350, category: 'Pens', stock: 30, sku: 'PEN-003', image: '' },
-        { name: 'A4 Ruled Notebook (200 Pages)', description: 'Premium A4 single-ruled notebook.', price: 80, category: 'Notebooks', stock: 150, sku: 'NB-001', image: '' },
-        { name: 'Faber-Castell Color Pencils (36 Shades)', description: 'Faber-Castell colour pencils.', price: 395, category: 'Art Supplies', stock: 60, sku: 'ART-002', image: '' }
-      ];
-      await Product.insertMany(sampleProducts);
-      console.log('Database seeded automatically!');
-    }
+console.log(`MongoDB connected successfully to ${dbUri.includes('memory') ? 'IN-MEMORY' : 'ATLAS'} DATABASE`)
 
-    const adminCount = await Admin.countDocuments();
-    if (adminCount === 0) {
-      const passwordHash = await bcrypt.hash('admin123', 12);
-      await Admin.create({ username: 'admin', passwordHash });
-      console.log('Admin account created! Username: admin | Password: admin123');
-    }
-  })
-  .catch((err) => console.error('MongoDB connection error:', err))
+const count = await Product.countDocuments()
+if (count === 0) {
+  const sampleProducts = [
+    { name: 'Reynolds Blue Ballpoint Pen (Pack of 10)', description: 'Smooth writing.', price: 55, category: 'Pens', stock: 200, sku: 'PEN-001', image: '' },
+    { name: 'Cello Gel Pen Set (20 Colors)', description: 'Pack of 20 colorful gel pens.', price: 180, category: 'Pens', stock: 80, sku: 'PEN-002', image: '' },
+    { name: 'Parker Vector Fountain Pen', description: 'Classic Parker Vector.', price: 350, category: 'Pens', stock: 30, sku: 'PEN-003', image: '' },
+    { name: 'A4 Ruled Notebook (200 Pages)', description: 'Premium A4 single-ruled notebook.', price: 80, category: 'Notebooks', stock: 150, sku: 'NB-001', image: '' },
+    { name: 'Faber-Castell Color Pencils (36 Shades)', description: 'Faber-Castell colour pencils.', price: 395, category: 'Art Supplies', stock: 60, sku: 'ART-002', image: '' }
+  ]
+  await Product.insertMany(sampleProducts)
+  console.log('Database seeded automatically!')
+}
+
+const adminCount = await Admin.countDocuments()
+if (adminCount === 0) {
+  const passwordHash = await bcrypt.hash('admin123', 12)
+  await Admin.create({ username: 'admin', passwordHash })
+  console.log('Admin account created! Username: admin | Password: admin123')
+}
 
 app.use('/api/products', productRoutes)
 app.use('/api/categories', categoryRoutes)
@@ -102,4 +111,4 @@ if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
   })
 }
 
-export default app;
+export default app
